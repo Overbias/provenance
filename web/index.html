@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Provenance</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #07070f;
+    color: #e8e4dc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  #graph { width: 100vw; height: 100vh; }
+
+  /* ── HUD ── */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px;
+    background: linear-gradient(to bottom, rgba(7,7,15,0.9), transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+  #title { font-size: 18px; font-weight: 300; letter-spacing: 0.12em; opacity: 0.7; }
+  #stats { font-size: 12px; opacity: 0.4; letter-spacing: 0.06em; }
+
+
+  /* ── info panel ── */
+  #panel {
+    position: fixed; left: 24px; bottom: 24px;
+    width: 320px; max-height: 60vh;
+    background: rgba(12, 12, 22, 0.88);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 20px;
+    backdrop-filter: blur(12px);
+    z-index: 10;
+    overflow-y: auto;
+    display: none;
+  }
+  #panel h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  #panel .type-badge {
+    display: inline-block; font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 20px;
+    margin-bottom: 14px; opacity: 0.8;
+  }
+  #panel .meta { font-size: 12px; opacity: 0.5; margin-bottom: 10px; line-height: 1.7; }
+  #panel-link { margin-bottom: 14px; }
+  #panel-link a { font-size: 11px; color: #fc3c44; text-decoration: none; opacity: 0.75; }
+  #panel-link a:hover { opacity: 1; }
+  #minimap {
+    position: fixed; top: 20px; right: 20px; z-index: 100;
+    border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);
+    opacity: 0; transition: opacity 0.5s; pointer-events: none;
+  }
+  #panel .connections h3 {
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    opacity: 0.4; margin-bottom: 8px;
+  }
+  #panel .conn-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  #panel .conn-item:hover { opacity: 0.7; }
+  #panel .conn-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  #panel .conn-role { font-size: 10px; opacity: 0.45; margin-left: auto; }
+  #panel-close {
+    position: absolute; top: 12px; right: 14px;
+    background: none; border: none; color: #888;
+    font-size: 18px; cursor: pointer; line-height: 1;
+    pointer-events: all;
+  }
+
+  /* ── search ── */
+  #search-wrap {
+    position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+    z-index: 10;
+  }
+  #search {
+    background: rgba(12,12,22,0.8); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 24px; padding: 8px 18px; color: #e8e4dc;
+    font-size: 14px; width: 300px; outline: none;
+    backdrop-filter: blur(8px);
+  }
+  #search::placeholder { opacity: 0.35; }
+  #search-results {
+    background: rgba(12,12,22,0.95); border: 1px solid rgba(255,255,255,0.08);
+    border-top: none; border-radius: 0 0 12px 12px;
+    max-height: 240px; overflow-y: auto; display: none;
+  }
+  .sr-item {
+    padding: 8px 18px; font-size: 13px; cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sr-item:hover { background: rgba(255,255,255,0.05); }
+  .sr-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .sr-sub { font-size: 10px; opacity: 0.4; margin-left: auto; }
+
+  /* ── discover ── */
+  #discover-btn {
+    margin-top: 12px; align-self: flex-start;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer; padding: 5px 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; color: #e8e4dc; opacity: 0.55;
+    transition: all 0.2s; pointer-events: all;
+  }
+  #discover-btn:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+  #discover-btn.active {
+    background: rgba(240,160,48,0.18);
+    border-color: rgba(240,160,48,0.55);
+    color: #f0a030; opacity: 1;
+  }
+  .disc-item { cursor: pointer; }
+  .disc-score { font-size: 9px; opacity: 0.35; white-space: nowrap; }
+  .disc-artist { font-size: 10px; opacity: 0.45; margin-bottom: 1px; }
+  .disc-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── legend ── */
+  #legend {
+    position: fixed; left: 24px; top: 60px;
+    display: flex; flex-direction: column; gap: 5px;
+    z-index: 10; pointer-events: none;
+  }
+  .leg {
+    display: flex; align-items: center; gap: 8px; font-size: 11px;
+    opacity: 0.75; cursor: pointer; pointer-events: all;
+    transition: opacity 0.2s, text-decoration 0.2s;
+    padding: 2px 0;
+  }
+  .leg:hover { opacity: 1 !important; }
+  .leg-dot { width: 8px; height: 8px; border-radius: 50%; transition: filter 0.2s; }
+
+  /* ── hop depth control ── */
+  #hop-control {
+    position: fixed; bottom: 60px; right: 24px;
+    display: none; align-items: center; gap: 8px;
+    z-index: 10;
+  }
+  .hop-btn {
+    width: 30px; height: 30px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: #e8e4dc; font-size: 13px;
+    cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hop-btn:hover { background: rgba(255,255,255,0.14); }
+  .hop-btn.active {
+    background: rgba(255,255,255,0.18);
+    border-color: rgba(255,255,255,0.45);
+  }
+
+  /* ── link distance control ── */
+  #link-control {
+    position: fixed; bottom: 24px; right: 24px;
+    display: flex; align-items: center; gap: 10px;
+    z-index: 10; pointer-events: all;
+  }
+  .lc-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.35; }
+  #link-dist {
+    -webkit-appearance: none; width: 120px; height: 2px;
+    background: rgba(255,255,255,0.15); border-radius: 2px; outline: none; cursor: pointer;
+  }
+  #link-dist::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    border-radius: 50%; background: rgba(255,255,255,0.6); cursor: pointer;
+  }
+
+  /* ── loading ── */
+  #loading {
+    position: fixed; inset: 0; background: #07070f;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  #loading p { opacity: 0.4; font-size: 14px; margin-top: 16px; letter-spacing: 0.08em; }
+  .spinner {
+    width: 36px; height: 36px; border: 2px solid rgba(255,255,255,0.1);
+    border-top-color: rgba(255,255,255,0.5);
+    border-radius: 50%; animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>Loading music graph…</p>
+</div>
+
+<div id="graph"></div>
+
+<div id="hud">
+  <div id="title">PROVENANCE</div>
+  <div id="stats"></div>
+</div>
+
+<div id="search-wrap">
+  <input id="search" type="text" placeholder="Search artist, album, producer…" autocomplete="off">
+  <div id="search-results"></div>
+</div>
+
+
+<div id="legend">
+  <div class="leg" data-type="album"    onclick="toggleLayer('album')"   ><div class="leg-dot" style="background:#f5f0e8"></div> album</div>
+  <div class="leg" data-type="artist"   onclick="toggleLayer('artist')"  ><div class="leg-dot" style="background:#7eb8d4"></div> artist</div>
+  <div class="leg" data-type="genre"    onclick="toggleLayer('genre')"   ><div class="leg-dot" style="background:#9b8ec4"></div> genre</div>
+  <div class="leg" data-type="year"     onclick="toggleLayer('year')"    ><div class="leg-dot" style="background:#7ab892"></div> year</div>
+  <div class="leg" data-type="label"    onclick="toggleLayer('label')"   ><div class="leg-dot" style="background:#d4924a"></div> label</div>
+  <div class="leg" data-type="producer" onclick="toggleLayer('producer')"><div class="leg-dot" style="background:#d4b84a"></div> producer</div>
+  <div class="leg" data-type="arranger" onclick="toggleLayer('arranger')"><div class="leg-dot" style="background:#b8d44a"></div> arranger</div>
+  <div class="leg" data-type="engineer" onclick="toggleLayer('engineer')"><div class="leg-dot" style="background:#4ab8b8"></div> engineer</div>
+  <div class="leg" data-type="studio"   onclick="toggleLayer('studio')"  ><div class="leg-dot" style="background:#c4614a"></div> studio</div>
+  <div class="leg" data-type="musician" onclick="toggleLayer('musician')"><div class="leg-dot" style="background:#6ab84a"></div> musician</div>
+  <div class="leg" data-type="writer"   onclick="toggleLayer('writer')"  ><div class="leg-dot" style="background:#c46a9a"></div> writer</div>
+  <button id="discover-btn" onclick="toggleDiscover()">DISCOVER</button>
+</div>
+
+<div id="hop-control">
+  <span class="lc-label">hops</span>
+  <button class="hop-btn" data-hops="1">1</button>
+  <button class="hop-btn active" data-hops="2">2</button>
+  <button class="hop-btn" data-hops="3">3</button>
+</div>
+
+<div id="link-control">
+  <span class="lc-label">compact</span>
+  <input type="range" id="link-dist" min="10" max="200" value="60" step="5">
+  <span class="lc-label">expand</span>
+</div>
+
+<canvas id="minimap" width="234" height="169"></canvas>
+<div id="panel">
+  <button id="panel-close">×</button>
+  <h2 id="panel-title"></h2>
+  <div id="panel-badge" class="type-badge"></div>
+  <div id="panel-meta" class="meta"></div>
+  <div id="panel-link"></div>
+  <div class="connections">
+    <h3>Connections</h3>
+    <div id="panel-conns"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.0/dist/3d-force-graph.min.js"></script>
+<script>
+
+const TYPE_COLOR = {
+  album:    '#f5f0e8',
+  artist:   '#7eb8d4',
+  genre:    '#9b8ec4',
+  year:     '#7ab892',
+  label:    '#d4924a',
+  writer:   '#c46a9a',
+  producer: '#d4b84a',
+  arranger: '#b8d44a',
+  engineer: '#4ab8b8',
+  studio:   '#c4614a',
+  musician: '#6ab84a',
+  other:    '#888888',
+};
+
+const TYPE_SIZE = {
+  album: 7, artist: 4, genre: 3, year: 2.5, label: 3,
+  writer: 2.5, producer: 4, arranger: 2.5, engineer: 3,
+  studio: 4, musician: 2.5, other: 1.2,
+};
+
+// hide "other" nodes — unlabelled credits that add noise
+const HIDDEN_TYPES = new Set(['other']);
+
+let Graph, graphData, fullGraphData, nodeMap = {}, selectedNode = null, connectedSet = new Set();
+let inSubgraphMode = false, currentSubgraphIds = [];
+let anchorNode = null, currentHopDepth = 2;
+let restoreData = null; // clean snapshot taken before d3-force mutates any links
+const IS_BUNDLE = false;
+let discoverMode = false, maxRecScore = 1;
+
+function lerpColor(a, b, t) {
+  const ah = parseInt(a.slice(1), 16), bh = parseInt(b.slice(1), 16);
+  const r = Math.round(((ah >> 16) & 255) + (((bh >> 16) & 255) - ((ah >> 16) & 255)) * t);
+  const g = Math.round(((ah >>  8) & 255) + (((bh >>  8) & 255) - ((ah >>  8) & 255)) * t);
+  const bl = Math.round(( ah        & 255) + (( bh        & 255) - ( ah        & 255)) * t);
+  return '#' + [r, g, bl].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+function nodeColorFn(n) {
+  if (!discoverMode) return TYPE_COLOR[n.type] || '#888';
+  if (n.type === 'album') {
+    if (!n.rec_score) return '#1e1c18';
+    const t = Math.pow(n.rec_score / maxRecScore, 0.5);
+    return lerpColor('#6b6050', '#f0a030', t);
+  }
+  return '#18181e';
+}
+function nodeValFn(n) {
+  const base = TYPE_SIZE[n.type] || 2;
+  const boost = n.type === 'album' ? Math.log1p(n.plays || 0) * 0.4 : 0;
+  const recBoost = (discoverMode && n.rec_score)
+    ? Math.log1p(n.rec_score / maxRecScore * 8) * 2 : 0;
+  return Math.pow(base + boost + recBoost, 1.6);
+}
+
+function activateSubGraph(ids) {
+  const idSet = new Set(ids);
+  inSubgraphMode = true;
+  currentSubgraphIds = ids.slice();
+
+  const subNodes = fullGraphData.nodes
+    .filter(n => idSet.has(n.id))
+    .map(n => ({
+      ...n,
+      x: (Math.random() - 0.5) * 30,
+      y: (Math.random() - 0.5) * 30,
+      z: (Math.random() - 0.5) * 30,
+    }));
+
+  // Normalise source/target to string IDs — by this point d3-force has mutated
+  // them to node objects on the old graph; spreading copies stale references
+  // that won't resolve in the fresh node list.
+  const subLinks = fullGraphData.links.filter(l => {
+    const s = typeof l.source === 'object' ? l.source.id : l.source;
+    const t = typeof l.target === 'object' ? l.target.id : l.target;
+    return idSet.has(s) && idSet.has(t);
+  }).map(l => ({
+    ...l,
+    source: typeof l.source === 'object' ? l.source.id : l.source,
+    target: typeof l.target === 'object' ? l.target.id : l.target,
+  }));
+
+  Graph.nodeVisibility(n => !HIDDEN_TYPES.has(n.type) && !hiddenLayers.has(n.type));
+  Graph.linkVisibility(subgraphLinkVisible);
+  Graph.d3Force('z', null);
+
+  // Scale link distance so the constellation fills a consistent visual area.
+  // Formula: target cluster radius ≈ 90, radius ~ linkDist * N^(1/3) in 3D layouts.
+  const linkDist = Math.max(15, Math.round(90 / Math.pow(Math.max(ids.length, 3), 0.33)));
+  Graph.d3Force('link').distance(linkDist);
+
+  // Sync slider: set min/max so the computed linkDist lands exactly at the midpoint.
+  // midpoint = (min + max) / 2 → min = 0.25*d, max = 1.75*d → midpoint = d ✓
+  const slider = document.getElementById('link-dist');
+  slider.min   = Math.max(5, Math.round(linkDist * 0.25));
+  slider.max   = Math.round(linkDist * 1.75);
+  slider.value = linkDist;
+
+  Graph.graphData({ nodes: subNodes, links: subLinks });
+  subNodes.forEach(n => nodeMap[n.id] = n);
+  Graph.d3ReheatSimulation();
+
+  // Draw minimap immediately — uses full-graph positions, no need to wait for sim
+  try { drawMinimap(); } catch(e) { console.warn('minimap:', e); }
+
+  // Park camera at origin while the simulation warms up.
+  // onEngineStop will reposition once nodes have actually settled.
+  Graph.cameraPosition({ x: 0, y: -50, z: 400 }, { x: 0, y: 0, z: 0 }, 600);
+  syncControls({ x: 0, y: 0, z: 0 }, 650);
+
+  document.getElementById('stats').textContent = `${ids.length} nodes · selection`;
+}
+
+function restoreFullGraph() {
+  inSubgraphMode = false;
+  currentSubgraphIds = [];
+  document.getElementById('minimap').style.opacity = '0';
+
+  Graph.nodeVisibility(n => !HIDDEN_TYPES.has(n.type) && !hiddenLayers.has(n.type));
+  Graph.linkVisibility(false);
+  Graph.d3Force('z', zDepthForce);
+
+  if (restoreData) {
+    Graph.graphData(restoreData);
+    restoreData.nodes.forEach(n => nodeMap[n.id] = n);
+    document.getElementById('stats').textContent =
+      `${restoreData.nodes.length.toLocaleString()} nodes · ${restoreData.links.length.toLocaleString()} connections`;
+  }
+
+  Graph.cameraPosition(DEFAULT_CAM.pos, DEFAULT_CAM.target, 800);
+  syncControls(DEFAULT_CAM.target, 850);
+
+  const slider = document.getElementById('link-dist');
+  slider.min = 10; slider.max = 200; slider.value = 60;
+}
+
+function linkColor(l) {
+  const t = l.type || '';
+  if (/produc/i.test(t))            return 'rgba(212,184,74,0.9)';
+  if (/engineer|mix/i.test(t))      return 'rgba(74,184,184,0.85)';
+  if (/studio|recorded|mixed at/i.test(t)) return 'rgba(196,97,74,0.85)';
+  if (/guitar|drums|bass|vocal|synth|piano|keys|perform/i.test(t)) return 'rgba(106,184,74,0.85)';
+  if (/written|compos/i.test(t))    return 'rgba(196,106,154,0.85)';
+  if (t === 'by')                   return 'rgba(126,184,212,0.85)';
+  if (t === 'genre')                return 'rgba(155,142,196,0.7)';
+  if (t === 'released')             return 'rgba(122,184,146,0.6)';
+  if (t === 'released_on')          return 'rgba(212,146,74,0.7)';
+  return 'rgba(255,255,255,0.5)';
+}
+
+// Pulls each node toward its target Z depth — outer scope so restoreFullGraph can reference it.
+const zDepthForce = () => {
+  Graph.graphData().nodes.forEach(n => {
+    if (n.depth == null) return;
+    const targetZ = -n.depth;
+    const dz = targetZ - (n.z || 0);
+    n.vz = (n.vz || 0) * 0.85 + dz * 0.04;
+  });
+};
+
+async function init() {
+  const res = await fetch('/graph.json');
+  graphData = await res.json();
+
+  fullGraphData = graphData;
+  nodeMap = {};
+  graphData.nodes.forEach(n => nodeMap[n.id] = n);
+  maxRecScore = Math.max(...graphData.nodes.filter(n => n.rec_score).map(n => n.rec_score), 1);
+
+  document.getElementById('stats').textContent =
+    `${graphData.nodes.length.toLocaleString()} nodes · ${graphData.links.length.toLocaleString()} connections`;
+  document.getElementById('loading').style.display = 'none';
+
+  // filter graph — hide noisy types
+  const filteredData = {
+    nodes: graphData.nodes.filter(n => !HIDDEN_TYPES.has(n.type)),
+    links: graphData.links.filter(l => {
+      const s = typeof l.source === 'object' ? l.source.id : l.source;
+      const t = typeof l.target === 'object' ? l.target.id : l.target;
+      const sn = nodeMap[s], tn = nodeMap[t];
+      return sn && tn && !HIDDEN_TYPES.has(sn.type) && !HIDDEN_TYPES.has(tn.type);
+    })
+  };
+
+  // Snapshot with string IDs taken NOW, before d3-force mutates source/target to objects.
+  // restoreFullGraph() always returns to this clean copy.
+  restoreData = {
+    nodes: filteredData.nodes,
+    links: filteredData.links.map(l => ({ ...l }))
+  };
+
+  Graph = ForceGraph3D({ controlType: 'orbit' })(document.getElementById('graph'))
+    .backgroundColor('#07070f')
+    .graphData(filteredData)
+
+    // nodes
+    .nodeColor(nodeColorFn)
+    .nodeVal(nodeValFn)
+    .nodeVisibility(n => !HIDDEN_TYPES.has(n.type))
+    .nodeLabel(n => {
+      const playHint = `<span style="opacity:0.35;font-size:10px"> · click to explore</span>`;
+      return `<div style="font:12px system-ui;background:rgba(10,10,20,0.85);
+        padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1)">
+        <b>${n.label}</b><br>
+        <span style="opacity:0.5;font-size:10px;text-transform:uppercase">${n.type}</span>${playHint}
+      </div>`;
+    })
+    .nodeResolution(16)
+
+    // links — hidden by default, revealed on node selection
+    .linkVisibility(false)
+    .linkColor(linkColor)
+    .linkWidth(l => /produc|engineer|studio/i.test(l.type || '') ? 1.2 : 0.6)
+    .linkOpacity(0.9)
+    .linkDirectionalParticles(l => /produc/i.test(l.type || '') ? 3 : 0)
+    .linkDirectionalParticleWidth(2)
+    .linkDirectionalParticleSpeed(0.005)
+    .linkDirectionalParticleColor(() => TYPE_COLOR['producer'])
+
+    // interaction
+    .onNodeClick(focusNode)
+    .onBackgroundClick(resetGraph)
+    .onEngineStop(() => {
+      if (inSubgraphMode) fitToVisible();
+    })
+
+  Graph.d3Force('z', zDepthForce);
+
+  // ── atmosphere ─────────────────────────────────────────────────────────────
+  const scene = Graph.scene();
+  // linear fog — gentler than exponential, avoids the green wedge artefact
+  scene.fog = new THREE.Fog(0x07070f, 400, 1400);
+
+  const ambLight = new THREE.AmbientLight(0x334466, 1.5);
+  scene.add(ambLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
+  dirLight.position.set(1, 1, 1);
+  scene.add(dirLight);
+
+  // angled camera: above and to the side so depth (Z) is visible
+  Graph.cameraPosition(DEFAULT_CAM.pos);
+
+  // once simulation settles, do a smooth settle and lock the orbit pivot
+  setTimeout(() => {
+    Graph.cameraPosition(DEFAULT_CAM.pos, DEFAULT_CAM.target, 2000);
+    syncControls(DEFAULT_CAM.target, 2100);
+  }, 4000);
+
+  // link distance slider
+  Graph.d3Force('link').distance(60);
+
+  document.getElementById('link-dist').addEventListener('input', e => {
+    Graph.d3Force('link').distance(+e.target.value);
+    Graph.d3ReheatSimulation();
+  });
+
+  document.querySelectorAll('.hop-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!anchorNode) return;
+      expandHops(anchorNode, +btn.dataset.hops);
+    });
+  });
+
+  buildSearch();
+}
+
+// ── link slider ──────────────────────────────────────────────────────────────
+// Minimum distance where nodes just fit without total overlap in 3D space.
+// Formula: cluster radius ≈ 0.7 × √N × d, camera at ~250 units → visible R ≈ 190.
+// So d_min = max(8, floor(270 / √N)).  Max scales proportionally.
+function updateLinkSlider(nVisible, reheat = true) {
+  const slider  = document.getElementById('link-dist');
+  const minDist = Math.max(8, Math.floor(270 / Math.sqrt(Math.max(1, nVisible))));
+  const maxDist = Math.max(200, minDist * 10);
+  const defDist = Math.round(minDist * 2.5);
+
+  slider.min   = minDist;
+  slider.max   = maxDist;
+  slider.value = defDist;
+
+  Graph.d3Force('link').distance(defDist);
+  if (reheat) Graph.d3ReheatSimulation();
+}
+
+function centroidOf(ids) {
+  const nodes = ids
+    .map(id => nodeMap[id])
+    .filter(n => n && n.x != null && !isNaN(n.x) && !isNaN(n.y) && !isNaN(n.z));
+  if (!nodes.length) return null;
+  return {
+    x: nodes.reduce((s, n) => s + n.x, 0) / nodes.length,
+    y: nodes.reduce((s, n) => s + n.y, 0) / nodes.length,
+    z: nodes.reduce((s, n) => s + n.z, 0) / nodes.length,
+  };
+}
+
+function centerOnCentroid(ids, camDist = 280) {
+  const c = centroidOf(ids);
+  if (!c) return;
+  Graph.cameraPosition(
+    { x: c.x + camDist * 0.15, y: c.y - camDist * 0.1, z: c.z + camDist },
+    c,
+    900
+  );
+  syncControls(c, 950);
+}
+
+// ── camera framing ───────────────────────────────────────────────────────────
+const DEFAULT_CAM = { pos: { x: 300, y: -200, z: 700 }, target: { x: 0, y: 0, z: -200 } };
+
+function syncControls(target, delay = 0) {
+  // After cameraPosition animation, align the OrbitControls pivot
+  // so subsequent drag/zoom orbits around the right point.
+  setTimeout(() => {
+    const ctrl = Graph.controls();
+    if (ctrl && ctrl.target) {
+      ctrl.target.set(target.x, target.y, target.z);
+      ctrl.update();
+    }
+  }, delay);
+}
+
+function fitToNodes(ids) {
+  const nodes = ids
+    .map(id => nodeMap[id])
+    .filter(n => n && n.x != null && n.y != null && n.z != null
+                  && !isNaN(n.x) && !isNaN(n.y) && !isNaN(n.z));
+
+  if (!nodes.length) return;
+
+  const cx = nodes.reduce((s, n) => s + n.x, 0) / nodes.length;
+  const cy = nodes.reduce((s, n) => s + n.y, 0) / nodes.length;
+  const cz = nodes.reduce((s, n) => s + n.z, 0) / nodes.length;
+  const target = { x: cx, y: cy, z: cz };
+
+  // Use median-based spread (ignore extreme outliers that blow up the bbox)
+  const dists = nodes.map(n => Math.hypot(n.x - cx, n.y - cy, n.z - cz)).sort((a,b) => a-b);
+  const p90   = dists[Math.floor(dists.length * 0.9)] || 80;
+  const r     = Math.max(80, p90);
+
+  // Cap so we never fly beyond the fog boundary
+  const camDist = Math.min((r / Math.tan(37.5 * Math.PI / 180)) * 1.4, 900);
+
+  // Shift camera+target left so the cluster appears centred in the area
+  // right of the ~330px detail panel (~23% of a 1440px screen → 0.17×camDist).
+  const panelShift = camDist * 0.17;
+  const shiftedTarget = { x: cx - panelShift, y: cy, z: cz };
+
+  Graph.cameraPosition(
+    { x: cx + camDist * 0.15 - panelShift, y: cy - camDist * 0.1, z: cz + camDist },
+    shiftedTarget,
+    900
+  );
+  syncControls(shiftedTarget, 950);
+}
+
+function fitToVisible() {
+  if (!inSubgraphMode) return;
+  const visibleIds = currentSubgraphIds.filter(id => {
+    const n = nodeMap[id];
+    return n && !HIDDEN_TYPES.has(n.type) && !hiddenLayers.has(n.type);
+  });
+  if (visibleIds.length) fitToNodes(visibleIds);
+}
+
+// ── hop-depth BFS ─────────────────────────────────────────────────────────────
+// Expands outward from `node` up to `maxHops` links using the full graph.
+// genre/year nodes are skipped on the last hop to prevent combinatorial explosion.
+// Hard cap of 500 nodes keeps the simulation responsive at 3 hops.
+const SKIP_LAST_HOP = new Set(['genre', 'year', 'other']);
+const MAX_CONSTELLATION = 500;
+
+function expandHops(node, maxHops) {
+  anchorNode = node;
+  currentHopDepth = maxHops;
+  selectedNode = node;
+
+  const visited = new Set([node.id]);
+  let frontier = new Set([node.id]);
+
+  for (let hop = 0; hop < maxHops && visited.size < MAX_CONSTELLATION; hop++) {
+    const isLastHop = hop === maxHops - 1;
+    const next = new Set();
+
+    fullGraphData.links.forEach(l => {
+      if (visited.size >= MAX_CONSTELLATION) return;
+      const s = typeof l.source === 'object' ? l.source.id : l.source;
+      const t = typeof l.target === 'object' ? l.target.id : l.target;
+
+      if (frontier.has(s) && !visited.has(t)) {
+        const tn = nodeMap[t];
+        if (tn && !HIDDEN_TYPES.has(tn.type) && !(isLastHop && SKIP_LAST_HOP.has(tn.type))) {
+          next.add(t); visited.add(t);
+        }
+      }
+      if (frontier.has(t) && !visited.has(s)) {
+        const sn = nodeMap[s];
+        if (sn && !HIDDEN_TYPES.has(sn.type) && !(isLastHop && SKIP_LAST_HOP.has(sn.type))) {
+          next.add(s); visited.add(s);
+        }
+      }
+    });
+
+    frontier = next;
+    if (!frontier.size) break;
+  }
+
+  connectedSet = visited;
+  activateSubGraph(Array.from(visited));
+  showPanel(node);
+
+  // sync hop buttons
+  document.querySelectorAll('.hop-btn').forEach(btn => {
+    btn.classList.toggle('active', +btn.dataset.hops === maxHops);
+  });
+  document.getElementById('hop-control').style.display = 'flex';
+}
+
+// ── focus / reset ─────────────────────────────────────────────────────────────
+function playNode(node) {
+  if (node.type !== 'album' && node.type !== 'artist') return;
+  const params = new URLSearchParams();
+  if (node.type === 'album') {
+    if (node.artist) params.set('artist', node.artist);
+    params.set('album', node.label);
+  } else {
+    params.set('artist', node.label);
+  }
+  fetch(`/play?${params}`).catch(() => {});
+}
+
+function focusNode(node) {
+  expandHops(node, currentHopDepth);
+}
+
+// ── layer toggles (legend click) ─────────────────────────────────────────
+let hiddenLayers = new Set();
+
+function updateLegend() {
+  document.querySelectorAll('.leg').forEach(el => {
+    const hidden = hiddenLayers.has(el.dataset.type);
+    el.style.opacity = hidden ? '0.2' : '0.75';
+    el.style.textDecoration = hidden ? 'line-through' : '';
+    el.querySelector('.leg-dot').style.filter = hidden ? 'grayscale(1) brightness(0.5)' : '';
+  });
+}
+
+function subgraphLinkVisible(l) {
+  const s = typeof l.source === 'object' ? l.source : nodeMap[l.source];
+  const t = typeof l.target === 'object' ? l.target : nodeMap[l.target];
+  return !!(s && t && !hiddenLayers.has(s.type) && !hiddenLayers.has(t.type));
+}
+
+function toggleLayer(type) {
+  if (hiddenLayers.has(type)) {
+    hiddenLayers.delete(type);
+  } else {
+    hiddenLayers.add(type);
+  }
+  Graph.nodeVisibility(n => !HIDDEN_TYPES.has(n.type) && !hiddenLayers.has(n.type));
+  if (inSubgraphMode) {
+    Graph.linkVisibility(subgraphLinkVisible);
+    fitToVisible();
+    try { drawMinimap(); } catch(e) { console.warn('minimap:', e); }
+  }
+  updateLegend();
+}
+
+function resetGraph() {
+  selectedNode = null;
+  anchorNode = null;
+  currentHopDepth = 2;
+  connectedSet = new Set();
+  document.getElementById('hop-control').style.display = 'none';
+  document.querySelectorAll('.hop-btn').forEach(btn => {
+    btn.classList.toggle('active', +btn.dataset.hops === 2);
+  });
+  restoreFullGraph();
+  Graph.linkVisibility(false);
+  Graph.nodeVisibility(n => !HIDDEN_TYPES.has(n.type) && !hiddenLayers.has(n.type));
+  Graph.cameraPosition(DEFAULT_CAM.pos, DEFAULT_CAM.target, 800);
+  syncControls(DEFAULT_CAM.target, 850);
+  updateLegend();
+  updateLinkSlider(fullGraphData.nodes.filter(n => !HIDDEN_TYPES.has(n.type)).length);
+  if (discoverMode) showDiscoverPanel(); else closePanel();
+}
+
+function closePanel() {
+  document.getElementById('panel').style.display = 'none';
+}
+
+function showDiscoverPanel() {
+  const recs = fullGraphData.nodes
+    .filter(n => n.rec_score)
+    .sort((a, b) => b.rec_score - a.rec_score)
+    .slice(0, 25);
+
+  const panel = document.getElementById('panel');
+  panel.style.display = 'block';
+  document.getElementById('panel-title').textContent = 'DISCOVER';
+  document.getElementById('panel-badge').innerHTML = '';
+  document.getElementById('panel-badge').style.cssText = '';
+  document.getElementById('panel-meta').textContent =
+    'Albums your provenance graph says you\'ll love — sorted by connection strength vs plays';
+  document.getElementById('panel-link').innerHTML = '';
+
+  const heading = document.querySelector('#panel .connections h3');
+  heading.textContent = 'Top Recommendations';
+
+  const conns = document.getElementById('panel-conns');
+  conns.innerHTML = recs.map(n => {
+    const t = Math.pow(n.rec_score / maxRecScore, 0.5);
+    const dotOpacity = (0.35 + 0.65 * t).toFixed(2);
+    return `<div class="conn-item disc-item" data-id="${n.id}">
+      <div class="conn-dot" style="background:#f0a030;opacity:${dotOpacity}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="disc-artist">${n.artist || ''}</div>
+        <div class="disc-title">${n.label}</div>
+      </div>
+      <div class="disc-score">${n.plays || 0}▶</div>
+    </div>`;
+  }).join('');
+
+  conns.querySelectorAll('.disc-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const node = nodeMap[el.dataset.id];
+      if (node) focusNode(node);
+    });
+  });
+}
+
+function toggleDiscover() {
+  discoverMode = !discoverMode;
+  document.getElementById('discover-btn').classList.toggle('active', discoverMode);
+  Graph.nodeColor(nodeColorFn).nodeVal(nodeValFn);
+  if (discoverMode && !inSubgraphMode) {
+    showDiscoverPanel();
+  } else if (!discoverMode && !inSubgraphMode) {
+    // only hide panel when the discover list was showing, not a node detail
+    closePanel();
+  }
+}
+
+function showPanel(node) {
+  const panel = document.getElementById('panel');
+  panel.style.display = 'block';
+
+  document.getElementById('panel-title').textContent = node.label;
+  document.querySelector('#panel .connections h3').textContent = 'Connections';
+
+  const badge = document.getElementById('panel-badge');
+  badge.textContent = node.type;
+  badge.style.background = (TYPE_COLOR[node.type] || '#888') + '33';
+  badge.style.color = TYPE_COLOR[node.type] || '#888';
+  badge.style.borderColor = (TYPE_COLOR[node.type] || '#888') + '55';
+  badge.style.border = '1px solid';
+
+  // meta
+  const meta = [];
+  if (node.year)    meta.push(`${node.year}`);
+  if (node.plays)   meta.push(`${node.plays.toLocaleString()} plays`);
+  if (node.tracks)  meta.push(`${node.tracks} tracks`);
+  if (node.depth !== undefined) meta.push(`depth ${node.depth}`);
+  document.getElementById('panel-meta').textContent = meta.join(' · ');
+
+  // Play link — calls local server which triggers Music.app via AppleScript
+  const linkEl = document.getElementById('panel-link');
+  if (!IS_BUNDLE && (node.type === 'album' || node.type === 'artist')) {
+    const params = new URLSearchParams();
+    if (node.type === 'album') {
+      if (node.artist) params.set('artist', node.artist);
+      params.set('album', node.label);
+    } else {
+      params.set('artist', node.label);
+    }
+    linkEl.innerHTML = `<a href="#" id="play-link">▶ Play in Music</a>`;
+    document.getElementById('play-link').onclick = e => {
+      e.preventDefault();
+      const a = document.getElementById('play-link');
+      a.textContent = '▶ Playing…';
+      fetch(`/play?${params}`)
+        .then(r => r.text())
+        .then(n => {
+          a.textContent = +n > 0 ? '▶ Play in Music' : '▶ Not found in library';
+          if (+n > 0) setTimeout(() => { a.textContent = '▶ Play in Music'; }, 2000);
+        })
+        .catch(() => { a.textContent = '▶ Play in Music'; });
+    };
+  } else {
+    linkEl.innerHTML = '';
+  }
+
+  // connections
+  const conns = document.getElementById('panel-conns');
+  conns.innerHTML = '';
+  const connLinks = Graph.graphData().links.filter(l => {
+    const s = typeof l.source === 'object' ? l.source.id : l.source;
+    const t = typeof l.target === 'object' ? l.target.id : l.target;
+    return s === node.id || t === node.id;
+  });
+
+  connLinks.slice(0, 40).forEach(l => {
+    const s = typeof l.source === 'object' ? l.source : nodeMap[l.source];
+    const t = typeof l.target === 'object' ? l.target : nodeMap[l.target];
+    const other = (s && s.id === node.id) ? t : s;
+    if (!other) return;
+    const item = document.createElement('div');
+    item.className = 'conn-item';
+    item.innerHTML = `
+      <div class="conn-dot" style="background:${TYPE_COLOR[other.type]||'#888'}"></div>
+      <span>${other.label}</span>
+      <span class="conn-role">${l.type || ''}</span>
+    `;
+    item.onclick = () => focusNode(other);
+    conns.appendChild(item);
+  });
+}
+
+document.getElementById('panel-close').onclick = () => {
+  // × on discover panel (not in a constellation) → turn off discover mode
+  if (discoverMode && !inSubgraphMode) {
+    toggleDiscover();
+  } else {
+    resetGraph();  // exits constellation; closePanel() will restore discover panel if mode is on
+  }
+};
+
+// ── search ────────────────────────────────────────────────────────────────────
+function buildSearch() {
+  const input = document.getElementById('search');
+  const results = document.getElementById('search-results');
+
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase().trim();
+    if (q.length < 2) { results.style.display = 'none'; return; }
+
+    const hits = graphData.nodes
+      .filter(n => !HIDDEN_TYPES.has(n.type) && n.label.toLowerCase().includes(q))
+      .sort((a, b) => b.freq - a.freq)
+      .slice(0, 12);
+
+    results.innerHTML = '';
+    if (!hits.length) { results.style.display = 'none'; return; }
+
+    hits.forEach(n => {
+      const item = document.createElement('div');
+      item.className = 'sr-item';
+      item.innerHTML = `
+        <div class="sr-dot" style="background:${TYPE_COLOR[n.type]||'#888'}"></div>
+        <span>${n.label}</span>
+        <span class="sr-sub">${n.type}</span>
+      `;
+      item.onclick = () => {
+        results.style.display = 'none';
+        input.value = '';
+        focusNode(n);
+      };
+      results.appendChild(item);
+    });
+    results.style.display = 'block';
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#search-wrap'))
+      results.style.display = 'none';
+  });
+}
+
+// ── minimap ───────────────────────────────────────────────────────────────────
+const mmCanvas = document.getElementById('minimap');
+const mmCtx    = mmCanvas.getContext('2d');
+const MM_W = mmCanvas.width, MM_H = mmCanvas.height;
+let fullGraphPositions = {};
+let mmBounds = null;
+
+function snapshotFullPositions() {
+  // fullGraphData.nodes keep their simulation x/y even after sub-graph swap
+  const nodes = fullGraphData.nodes.filter(n => n.x != null && !isNaN(n.x));
+  if (nodes.length < 100) return;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    fullGraphPositions[n.id] = { x: n.x, y: n.y };
+    if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x;
+    if (n.y < minY) minY = n.y; if (n.y > maxY) maxY = n.y;
+  });
+  mmBounds = { minX, maxX, minY, maxY };
+}
+
+function mmProject(x, y) {
+  const pad = 10;
+  const rx = mmBounds.maxX - mmBounds.minX || 1;
+  const ry = mmBounds.maxY - mmBounds.minY || 1;
+  return {
+    px: pad + ((x - mmBounds.minX) / rx) * (MM_W - 2*pad),
+    py: pad + ((y - mmBounds.minY) / ry) * (MM_H - 2*pad),
+  };
+}
+
+function drawMinimap() {
+  if (!inSubgraphMode) return;
+  if (!mmBounds) snapshotFullPositions();
+  if (!mmBounds) return;
+
+  const subSet = new Set(currentSubgraphIds);
+  const conNodes = currentSubgraphIds
+    .map(id => ({ pos: fullGraphPositions[id], node: nodeMap[id] }))
+    .filter(({ pos, node }) => pos && node);
+
+  if (!conNodes.length) return;
+
+  mmCtx.clearRect(0, 0, MM_W, MM_H);
+
+  // background
+  mmCtx.fillStyle = 'rgba(4,4,14,0.94)';
+  mmCtx.fillRect(0, 0, MM_W, MM_H);
+
+  // full graph — very dim star field, faded back
+  mmCtx.fillStyle = 'rgba(255,255,255,0.035)';
+  Object.entries(fullGraphPositions).forEach(([id, pos]) => {
+    if (subSet.has(id)) return;
+    const { px, py } = mmProject(pos.x, pos.y);
+    mmCtx.beginPath();
+    mmCtx.arc(px, py, 0.6, 0, Math.PI * 2);
+    mmCtx.fill();
+  });
+
+  // constellation bounding glow
+  const cx = conNodes.reduce((s, { pos }) => s + pos.x, 0) / conNodes.length;
+  const cy = conNodes.reduce((s, { pos }) => s + pos.y, 0) / conNodes.length;
+  const dists = conNodes.map(({ pos }) => Math.hypot(pos.x - cx, pos.y - cy)).sort((a,b) => a-b);
+  const r90  = dists[Math.floor(dists.length * 0.9)] || 10;
+  const { px: pcx, py: pcy } = mmProject(cx, cy);
+  const scaleX = (MM_W - 20) / (mmBounds.maxX - mmBounds.minX || 1);
+  const scaleY = (MM_H - 20) / (mmBounds.maxY - mmBounds.minY || 1);
+  const pr = Math.max(r90 * Math.min(scaleX, scaleY), 5);
+
+  const grd = mmCtx.createRadialGradient(pcx, pcy, 0, pcx, pcy, pr * 2);
+  grd.addColorStop(0, 'rgba(255,255,255,0.10)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  mmCtx.fillStyle = grd;
+  mmCtx.beginPath();
+  mmCtx.arc(pcx, pcy, pr * 2, 0, Math.PI * 2);
+  mmCtx.fill();
+
+  // dashed circle
+  mmCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+  mmCtx.lineWidth = 0.8;
+  mmCtx.setLineDash([2, 3]);
+  mmCtx.beginPath();
+  mmCtx.arc(pcx, pcy, pr, 0, Math.PI * 2);
+  mmCtx.stroke();
+  mmCtx.setLineDash([]);
+
+  // constellation nodes — bright, colored by type, with soft halo
+  conNodes.forEach(({ pos, node }) => {
+    const { px, py } = mmProject(pos.x, pos.y);
+    const color = TYPE_COLOR[node.type] || '#888';
+    const r = node.type === 'album' ? 2.8 : 1.8;
+
+    // soft halo
+    mmCtx.globalAlpha = 0.18;
+    mmCtx.fillStyle = color;
+    mmCtx.beginPath();
+    mmCtx.arc(px, py, r * 2.5, 0, Math.PI * 2);
+    mmCtx.fill();
+
+    // solid dot
+    mmCtx.globalAlpha = 1;
+    mmCtx.fillStyle = color;
+    mmCtx.beginPath();
+    mmCtx.arc(px, py, r, 0, Math.PI * 2);
+    mmCtx.fill();
+  });
+  mmCtx.globalAlpha = 1;
+
+  // label
+  mmCtx.fillStyle = 'rgba(255,255,255,0.2)';
+  mmCtx.font = '8px system-ui';
+  mmCtx.textAlign = 'left';
+  mmCtx.fillText('in your library', 6, MM_H - 5);
+
+  mmCanvas.style.opacity = '1';
+}
+
+init();
+</script>
+</body>
+</html>

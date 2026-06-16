@@ -1,0 +1,13 @@
+# Personal library data — never commit
+data/library.db
+data/graph.json
+
+# Generated / large files
+web/bundle.html
+scripts/.cdn_cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
