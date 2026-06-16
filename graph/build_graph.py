@@ -67,6 +67,22 @@ def build():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
 
+    # Ensure enrichment tables exist (they're populated later by enrich_*.py)
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS credits (
+            id INTEGER PRIMARY KEY, album_id INTEGER, person_name TEXT,
+            role TEXT, role_category TEXT, tracks TEXT);
+        CREATE TABLE IF NOT EXISTS studios (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+        CREATE TABLE IF NOT EXISTS album_studios (
+            album_id INTEGER, studio_id INTEGER, role TEXT);
+        CREATE TABLE IF NOT EXISTS labels (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+        CREATE TABLE IF NOT EXISTS album_labels (album_id INTEGER, label_id INTEGER);
+        CREATE TABLE IF NOT EXISTS artist_relationships (
+            id INTEGER PRIMARY KEY, artist_id INTEGER, related_name TEXT,
+            related_mb_id TEXT, relation_type TEXT, direction TEXT,
+            begin_year INTEGER, end_year INTEGER, ended INTEGER DEFAULT 0);
+    """)
+
     nodes = {}   # id -> node dict
     links = []   # {source, target, type}
 
