@@ -6,7 +6,7 @@ data/enrich_log.txt
 # enrichment.json is intentionally committed — it's the shared corpus
 
 # Generated / large files
-web/bundle.html
+# web/bundle.html — intentionally committed as live demo
 scripts/.cdn_cache/
 
 # Python
