@@ -1,6 +1,9 @@
 # Personal library data — never commit
 data/library.db
 data/graph.json
+data/enrich_log.txt
+
+# enrichment.json is intentionally committed — it's the shared corpus
 
 # Generated / large files
 web/bundle.html

@@ -9,13 +9,10 @@ What it does:
   2. Parses it into a local database (~10 seconds)
   3. Builds the 3D graph
   4. Opens Provenance in your browser at http://localhost:8765
+  5. Starts background enrichment (band memberships, credits, studios)
+     — the graph fills in over the next few hours while you explore
 
 No pip installs required — pure Python stdlib.
-
-For deeper connections (producers, engineers, studios):
-  python3 ingest/enrich_discogs.py       # ~2 hrs, needs free Discogs account
-  python3 ingest/enrich_musicbrainz.py   # ~2 hrs, free
-  python3 graph/build_graph.py           # rebuild after enrichment
 """
 import subprocess, sys, os
 from pathlib import Path
@@ -56,8 +53,13 @@ if __name__ == "__main__":
     print(f"{'─' * 40}")
     print(f"Library: {xml}")
 
-    run(["ingest/parse_itunes.py", str(xml)], "Parsing your library…")
-    run(["graph/build_graph.py"],              "Building graph…")
+    run(["ingest/parse_itunes.py",       str(xml)], "Parsing your library…")
+    run(["ingest/import_enrichment.py"],           "Importing enrichment corpus…")
+    run(["graph/build_graph.py"],                  "Building graph…")
 
-    print("\n✓ Done — opening Provenance\n")
+    print("\n✓ Done — opening Provenance")
+    print("  Deeper connections (producers, engineers, studios) are enriching")
+    print("  in the background — the graph will fill in over the next few hours.\n")
+
     subprocess.Popen([sys.executable, "api/server.py"])
+    subprocess.Popen([sys.executable, "ingest/enrich_all.py"], cwd=ROOT)
