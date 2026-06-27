@@ -4,6 +4,12 @@ Your music library as a 3D knowledge graph. Albums, artists, producers, engineer
 
 ![Provenance screenshot](web/screenshot.png)
 
+## Try it first
+
+Download **[bundle.html](web/bundle.html)** and open it in your browser — no setup, no Python, no server. You'll see a real library mapped as a 3D knowledge graph. When you're ready to see your own:
+
+---
+
 ## Quick start
 
 ```bash
